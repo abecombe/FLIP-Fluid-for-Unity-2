@@ -1,4 +1,4 @@
-﻿Shader "ScreenSpaceFluidRendering/ParticleInstance"
+﻿Shader "ParticleRendering/ParticleInstance"
 {
     CGINCLUDE
 
@@ -64,7 +64,7 @@
     // --------------------------------------------------------------------
     // Fragment Shader
     // --------------------------------------------------------------------
-    float4 Fragment(v2f i) : SV_Target
+    float2 Fragment(v2f i) : SV_Target
     {
         const float3 m = normalize(i.camera_space_pos);
         const float3 minus_a = -i.camera_space_sphere_center_pos;
@@ -79,7 +79,7 @@
 
         if (depth < _NearClipPlane || depth > _FarClipPlane) discard;
 
-        return float4((float3)(depth / _FarClipPlane), 1);
+        return float2(depth / _FarClipPlane, 0);
     }
 
     ENDCG
@@ -95,8 +95,8 @@
         Cull Back
         ZWrite Off
         ZTest Always
-        Blend One One, One One
-        BlendOp Min, Add
+        Blend One One
+        BlendOp Min
 
         Pass
         {

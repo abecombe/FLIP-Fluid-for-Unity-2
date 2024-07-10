@@ -116,6 +116,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
 
     // Rendering
     private ScreenSpaceFluidRendering _screenSpaceFluidRendering;
+    private ParticleRendering _particleRendering;
     private BackGroundController _backGroundController;
     #endregion
 
@@ -454,7 +455,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         k.Dispatch(NumParticles);
 
         _screenSpaceFluidRendering.Render(_particleRenderingBuffer);
-        //_backGroundController.Render();
+        //_particleRendering.Render(_particleRenderingBuffer);
     }
     #endregion
 
@@ -552,7 +553,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         InitGPUBuffers();
 
         _screenSpaceFluidRendering = FindObjectOfType<ScreenSpaceFluidRendering>();
-        //_backGroundController = FindObjectOfType<BackGroundController>();
+        _particleRendering = FindObjectOfType<ParticleRendering>();
     }
 
     private void Start()

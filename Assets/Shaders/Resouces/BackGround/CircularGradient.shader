@@ -30,7 +30,7 @@ Shader "BackGround/CircularGradient"
 
     SubShader
     {
-        Tags{ "RenderType" = "Transparent" "Queue" = "Transparent" "LightMode"="ForwardBase" }
+        Tags{ "RenderType" = "Transparent" "Queue" = "Transparent" }
 
         Cull Back
         Blend SrcAlpha OneMinusSrcAlpha

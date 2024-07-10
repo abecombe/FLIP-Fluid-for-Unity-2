@@ -26,6 +26,8 @@ public class ScreenSpaceFluidRendering : MonoBehaviour
     [SerializeField] private CustomAnimationCurve _alphaLookupCurve = new();
     [SerializeField] private Vector2 _alphaLookupCurveRange = new(0, 1);
 
+    [SerializeField] private Mesh _quadMesh;
+
     private Camera _camera;
     private Camera _mainCamera;
 
@@ -35,7 +37,6 @@ public class ScreenSpaceFluidRendering : MonoBehaviour
     private Material _particleInstanceMaterial;
     private MaterialPropertyBlock _mpb;
     private GPUBufferWithArgs _particleRenderingBufferWithArgs = new();
-    private BillboardQuadBuilder _billboardQuad = new();
 
     private Material _narrowRangeFilterMaterial;
     private Material _blurMaterial;
@@ -61,7 +62,6 @@ public class ScreenSpaceFluidRendering : MonoBehaviour
         _layerMask = gameObject.layer;
         _particleInstanceMaterial = new Material(Shader.Find("ScreenSpaceFluidRendering/ParticleInstance"));
         _mpb = new MaterialPropertyBlock();
-        _billboardQuad.Init(_camera);
 
         _commandBuffer = new CommandBuffer();
         _camera.AddCommandBuffer(CameraEvent.BeforeImageEffects, _commandBuffer);
@@ -102,14 +102,14 @@ public class ScreenSpaceFluidRendering : MonoBehaviour
 
     private void RenderParticles(GPUBuffer<float4> particleRenderingBuffer)
     {
-        _particleRenderingBufferWithArgs.CheckArgsChanged(_billboardQuad.Mesh.GetIndexCount(0), (uint)particleRenderingBuffer.Size);
+        _particleRenderingBufferWithArgs.CheckArgsChanged(_quadMesh.GetIndexCount(0), (uint)particleRenderingBuffer.Size);
 
         _mpb.SetBuffer("_ParticleRenderingBuffer", particleRenderingBuffer);
         _mpb.SetFloat("_Radius", _particleRadius);
         _mpb.SetFloat("_NearClipPlane", _camera.nearClipPlane);
         _mpb.SetFloat("_FarClipPlane", _camera.farClipPlane);
 
-        CustomGraphics.DrawMeshInstancedIndirect(_billboardQuad.UpdatedMesh, _particleInstanceMaterial, _mpb, _particleRenderingBufferWithArgs, _layerMask);
+        CustomGraphics.DrawMeshInstancedIndirect(_quadMesh, _particleInstanceMaterial, _mpb, _particleRenderingBufferWithArgs, _layerMask);
     }
 
     private void ApplyPostEffect()

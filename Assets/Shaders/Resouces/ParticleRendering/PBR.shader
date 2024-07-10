@@ -1,4 +1,4 @@
-Shader "ScreenSpaceFluidRendering/PBR"
+Shader "ParticleRendering/PBR"
 {
     CGINCLUDE
 
@@ -15,6 +15,8 @@ Shader "ScreenSpaceFluidRendering/PBR"
     float _Roughness = 0.01;
     float _Metallic = 0.3;
     float3 _Albedo = float3(0.0825, 0.402, 0.5785);
+
+    float3 _AmbientOcclusionColor;
 
     inline float3 GetEyeSpacePos(float2 screen_space_uv)
     {
@@ -96,9 +98,18 @@ Shader "ScreenSpaceFluidRendering/PBR"
         half4 rgbm = UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, refl_dir, mip);
         half3 indirect_specular = DecodeHDR(rgbm, unity_SpecCube0_HDR);
 
-        half3 c = BRDF(_Albedo, metallic, perceptual_roughness, world_space_norm, world_space_view_vec, indirect_diffuse, indirect_specular);
+        half3 c = _Albedo;
 
-        return eye_space_pos.z != -_FarClipPlane ? float4(c, saturate(tex2D(_MainTex, screen_space_uv).a)) : 0;
+        // Final Specular Contribution
+        float vdotn = dot(world_space_view_vec, world_space_norm);
+        float fresnel = 0.15;
+        fresnel = 1 + (1.0 - fresnel) * pow(1.0 - vdotn, 5.0) / fresnel;
+
+        c *= fresnel;
+
+        c = lerp(c, _AmbientOcclusionColor, tex2D(_MainTex, i.texcoord).g);
+
+        return eye_space_pos.z != -_FarClipPlane ? float4(c, 1) : 0;
     }
 
     ENDCG

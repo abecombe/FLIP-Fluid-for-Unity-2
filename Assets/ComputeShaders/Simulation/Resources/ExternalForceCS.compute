@@ -1,5 +1,7 @@
 ﻿#pragma kernel AddExternalForce
 
+#pragma multi_compile _ USE_NON_SOLID_CELL_FILTERING
+
 #include "../Common.hlsl"
 
 float3 _Gravity;
@@ -8,6 +10,9 @@ float3 _RayDirection;
 float4 _MouseForceParameter; // x,y,z: Force w: Range
 
 RWStructuredBuffer<float3> _GridVelocityBufferRW;
+StructuredBuffer<uint> _GridTypeBufferRead;
+
+StructuredBuffer<uint> _GridNonSolidCellIDBufferRead;
 
 inline float GetMouseForce(float3 position)
 {
@@ -21,8 +26,12 @@ void AddExternalForce(uint3 thread_id : SV_DispatchThreadID)
 {
     RETURN_IF_INVALID(thread_id);
 
-    const uint c_id = thread_id.x;
+    const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
     const int3 c_index = CellIDToCellIndex(c_id);
+
+    const uint c_types = _GridTypeBufferRead[c_id];
+
+    if (IsSolidCell(GetMyType(c_types))) return;
 
     float3 velocity = _GridVelocityBufferRW[c_id];
 
@@ -38,7 +47,7 @@ void AddExternalForce(uint3 thread_id : SV_DispatchThreadID)
     mouse_force *= _MouseForceParameter.xyz;
     velocity += mouse_force * _DeltaTime;
 
-    EnforceBoundaryCondition(velocity, c_index);
+    EnforceBoundaryCondition(velocity, c_types);
 
     _GridVelocityBufferRW[c_id] = velocity;
 }

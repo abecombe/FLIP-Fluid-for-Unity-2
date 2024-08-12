@@ -5,6 +5,22 @@ namespace Abecombe.GPUBufferOperators
 {
     public class GPURadixSort : IDisposable
     {
+        public enum KeyType
+        {
+            UInt = 0,
+            Int,
+            Float
+        }
+
+        public enum SortingOrder
+        {
+            Ascending = 0,
+            Descending
+        }
+
+        // we use 16-way radix sort
+        private const int NWay = 16;
+
         private const int NumGroupThreads = 128;
         private const int NumElementsPerGroup = NumGroupThreads;
 
@@ -19,11 +35,11 @@ namespace Abecombe.GPUBufferOperators
         // buffer to store the locally sorted input data
         // size: number of data
         private GraphicsBuffer _tempBuffer;
-        // buffer to store the first index of each 2bit key-value (0, 1, 2, 3) within locally sorted groups
-        // size: 4 * number of groups
+        // buffer to store the first index of each 4bit key-value (0, 1, 2, ..., 16) within locally sorted groups
+        // size: 16 * number of groups
         private GraphicsBuffer _firstIndexBuffer;
-        // buffer to store the sums of each 2bit key-value (0, 1, 2, 3) within locally sorted groups
-        // size: 4 * number of groups
+        // buffer to store the sums of each 4bit key-value (0, 1, 2, ..., 16) within locally sorted groups
+        // size: 16 * number of groups
         private GraphicsBuffer _groupSumBuffer;
 
         private bool _inited = false;
@@ -44,18 +60,38 @@ namespace Abecombe.GPUBufferOperators
 
         // Implementation of Paper "Fast 4-way parallel radix sorting on GPUs"
         // https://vgc.poly.edu/~csilva/papers/cgf.pdf
-
-        // GPURadixSort has O(n * s * w) complexity
-        // n : number of data
-        // s : size of data struct
-        // w : number of bits to sort
+        // (we use 16-way radix sort)
 
         /// <summary>
         /// Sort data buffer in ascending order
         /// </summary>
         /// <param name="dataBuffer">data buffer to be sorted</param>
-        /// <param name="maxValue">maximum key-value</param>
-        public void Sort(GraphicsBuffer dataBuffer, uint maxValue = uint.MaxValue)
+        /// <param name="keyType">sorting key type (uint, int or float)</param>
+        /// <param name="maxValue">maximum key-value (valid only when keyType is UInt)</param>
+        public void Sort(GraphicsBuffer dataBuffer, KeyType keyType, uint maxValue = uint.MaxValue)
+        {
+            Sort(dataBuffer, SortingOrder.Ascending, keyType, maxValue);
+        }
+
+        /// <summary>
+        /// Sort data buffer in descending order
+        /// </summary>
+        /// <param name="dataBuffer">data buffer to be sorted</param>
+        /// <param name="keyType">sorting key type (uint, int or float)</param>
+        /// <param name="maxValue">maximum key-value (valid only when keyType is UInt)</param>
+        public void SortDescending(GraphicsBuffer dataBuffer, KeyType keyType, uint maxValue = uint.MaxValue)
+        {
+            Sort(dataBuffer, SortingOrder.Descending, keyType, maxValue);
+        }
+
+        /// <summary>
+        /// Sort data buffer in specified order
+        /// </summary>
+        /// <param name="dataBuffer">data buffer to be sorted</param>
+        /// <param name="sortingOrder"> sorting order (ascending or descending)</param>
+        /// <param name="keyType">sorting key type (uint, int or float)</param>
+        /// <param name="maxValue">maximum key-value (valid only when keyType is UInt)</param>
+        public void Sort(GraphicsBuffer dataBuffer, SortingOrder sortingOrder, KeyType keyType, uint maxValue = uint.MaxValue)
         {
             if (!_inited) Init();
 
@@ -70,6 +106,8 @@ namespace Abecombe.GPUBufferOperators
 
             cs.SetInt("num_elements", numElements);
             cs.SetInt("num_groups", numGroups);
+            cs.SetInt("key_type", (int)keyType);
+            cs.SetInt("sorting_order", (int)sortingOrder);
 
             cs.SetBuffer(k_local, "data_in_buffer", dataBuffer);
             cs.SetBuffer(k_local, "data_out_buffer", _tempBuffer);
@@ -81,12 +119,12 @@ namespace Abecombe.GPUBufferOperators
             cs.SetBuffer(k_shuffle, "first_index_buffer", _firstIndexBuffer);
             cs.SetBuffer(k_shuffle, "global_prefix_sum_buffer", _groupSumBuffer);
 
-            int firstBitHigh = Convert.ToString(maxValue, 2).Length;
-            for (int bitShift = 0; bitShift < firstBitHigh; bitShift += 2)
+            int firstBitHigh = keyType == KeyType.UInt ? Convert.ToString(maxValue, 2).Length : 32;
+            for (int bitShift = 0; bitShift < firstBitHigh; bitShift += Convert.ToString(NWay, 2).Length - 1)
             {
                 cs.SetInt("bit_shift", bitShift);
 
-                // sort input data locally and output first-index / sums of each 2bit key-value within groups
+                // sort input data locally and output first-index / sums of each 4bit key-value within groups
                 for (int i = 0; i < numGroups; i += MaxDispatchSize)
                 {
                     cs.SetInt("group_offset", i);
@@ -94,7 +132,7 @@ namespace Abecombe.GPUBufferOperators
                 }
 
                 // prefix scan global group sum data
-                _prefixScan.Scan(_groupSumBuffer);
+                _prefixScan.ExclusiveScan(_groupSumBuffer);
 
                 // copy input data to final position in global memory
                 for (int i = 0; i < numGroups; i += MaxDispatchSize)
@@ -112,15 +150,15 @@ namespace Abecombe.GPUBufferOperators
                 _tempBuffer?.Release();
                 _tempBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numElements, bufferStride);
             }
-            if (_firstIndexBuffer is null || _firstIndexBuffer.count < 4 * numGroups)
+            if (_firstIndexBuffer is null || _firstIndexBuffer.count < NWay * numGroups)
             {
                 _firstIndexBuffer?.Release();
-                _firstIndexBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 4 * numGroups, sizeof(uint));
+                _firstIndexBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, NWay * numGroups, sizeof(uint));
             }
-            if (_groupSumBuffer is null || _groupSumBuffer.count != 4 * numGroups)
+            if (_groupSumBuffer is null || _groupSumBuffer.count != NWay * numGroups)
             {
                 _groupSumBuffer?.Release();
-                _groupSumBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 4 * numGroups, sizeof(uint));
+                _groupSumBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, NWay * numGroups, sizeof(uint));
             }
         }
 

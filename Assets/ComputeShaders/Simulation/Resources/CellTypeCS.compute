@@ -1,0 +1,133 @@
+﻿#pragma kernel SetMyCellType
+#pragma kernel SetNeighborCellTypes
+#pragma kernel SetMyCellAxisType
+#pragma kernel SetNeighborCellAxisTypes
+
+#pragma multi_compile _ IS_CUBE_AREA_SIMULATION IS_SPHERE_AREA_SIMULATION
+
+#include "../Common.hlsl"
+
+StructuredBuffer<uint2> _GridParticleIDBufferRead;
+
+StructuredBuffer<uint> _GridTypeBufferRead;
+RWStructuredBuffer<uint> _GridTypeBufferWrite;
+
+StructuredBuffer<uint3> _GridAxisTypeBufferRead;
+RWStructuredBuffer<uint3> _GridAxisTypeBufferWrite;
+
+RWStructuredBuffer<uint> _GridNonSolidCellIDBufferWrite;
+
+[numthreads(128, 1, 1)]
+void SetMyCellType(uint3 thread_id : SV_DispatchThreadID)
+{
+    RETURN_IF_INVALID(thread_id);
+
+    const uint c_id = thread_id.x;
+    const int3 c_index = CellIDToCellIndex(c_id);
+
+    const uint2 particle_index = _GridParticleIDBufferRead[c_id];
+    const uint c_type =
+        IsSolidCell(CellIndexToWorldPos(c_index)) ? CT_SOLID :
+        particle_index.y - particle_index.x > 0 ? CT_FLUID :
+        CT_AIR;
+
+    uint c_types = 0;
+    SetMyType(c_types, c_type);
+
+    _GridTypeBufferWrite[c_id] = c_types;
+
+    SetIDWithType(c_types, c_id);
+    _GridNonSolidCellIDBufferWrite[c_id] = c_types;
+}
+
+[numthreads(128, 1, 1)]
+void SetNeighborCellTypes(uint3 thread_id : SV_DispatchThreadID)
+{
+    RETURN_IF_INVALID(thread_id);
+
+    const uint c_id = thread_id.x;
+    const int3 c_index = CellIDToCellIndex(c_id);
+
+    const uint c_my_type = GetMyType(_GridTypeBufferRead[c_id]);
+    const uint c_xp_type = c_index.x == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(-1, 0, 0))]);
+    const uint c_xn_type = c_index.x == _GridSize.x - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(1, 0, 0))]);
+    const uint c_yp_type = c_index.y == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, -1, 0))]);
+    const uint c_yn_type = c_index.y == _GridSize.y - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 1, 0))]);
+    const uint c_zp_type = c_index.z == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, -1))]);
+    const uint c_zn_type = c_index.z == _GridSize.z - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, 1))]);
+
+    uint c_types = 0;
+    SetMyType(c_types, c_my_type);
+    SetXPrevType(c_types, c_xp_type);
+    SetXNextType(c_types, c_xn_type);
+    SetYPrevType(c_types, c_yp_type);
+    SetYNextType(c_types, c_yn_type);
+    SetZPrevType(c_types, c_zp_type);
+    SetZNextType(c_types, c_zn_type);
+
+    _GridTypeBufferWrite[c_id] = c_types;
+}
+
+[numthreads(128, 1, 1)]
+void SetMyCellAxisType(uint3 thread_id : SV_DispatchThreadID)
+{
+    RETURN_IF_INVALID(thread_id);
+
+    const uint c_id = thread_id.x;
+    const int3 c_index = CellIDToCellIndex(c_id);
+
+    const uint c_types = _GridTypeBufferRead[c_id];
+
+    // decide grid type
+    const uint c_my_type = GetMyType(c_types);
+    const uint c_xp_type = GetXPrevType(c_types);
+    const uint c_yp_type = GetYPrevType(c_types);
+    const uint c_zp_type = GetZPrevType(c_types);
+
+    uint3 c_axis_type;
+    c_axis_type.x =
+        IsSolidCell(c_my_type) || IsSolidCell(c_xp_type) ? CT_SOLID :
+        IsFluidCell(c_my_type) || IsFluidCell(c_xp_type) ? CT_FLUID :
+        CT_AIR;
+    c_axis_type.y =
+        IsSolidCell(c_my_type) || IsSolidCell(c_yp_type) ? CT_SOLID :
+        IsFluidCell(c_my_type) || IsFluidCell(c_yp_type) ? CT_FLUID :
+        CT_AIR;
+    c_axis_type.z =
+        IsSolidCell(c_my_type) || IsSolidCell(c_zp_type) ? CT_SOLID :
+        IsFluidCell(c_my_type) || IsFluidCell(c_zp_type) ? CT_FLUID :
+        CT_AIR;
+
+    uint3 c_axis_types = 0;
+    SetMyType(c_axis_types, c_axis_type);
+
+    _GridAxisTypeBufferWrite[c_id] = c_axis_types;
+}
+
+[numthreads(128, 1, 1)]
+void SetNeighborCellAxisTypes(uint3 thread_id : SV_DispatchThreadID)
+{
+    RETURN_IF_INVALID(thread_id);
+
+    const uint c_id = thread_id.x;
+    const int3 c_index = CellIDToCellIndex(c_id);
+
+    const uint3 c_my_axis_type = GetMyType(_GridAxisTypeBufferRead[c_id]);
+    const uint3 c_xp_axis_type = c_index.x == 0 ? (uint3)CT_SOLID : GetMyType(_GridAxisTypeBufferRead[CellIndexToCellID(c_index + int3(-1, 0, 0))]);
+    const uint3 c_xn_axis_type = c_index.x == _GridSize.x - 1 ? (uint3)CT_SOLID : GetMyType(_GridAxisTypeBufferRead[CellIndexToCellID(c_index + int3(1, 0, 0))]);
+    const uint3 c_yp_axis_type = c_index.y == 0 ? (uint3)CT_SOLID : GetMyType(_GridAxisTypeBufferRead[CellIndexToCellID(c_index + int3(0, -1, 0))]);
+    const uint3 c_yn_axis_type = c_index.y == _GridSize.y - 1 ? (uint3)CT_SOLID : GetMyType(_GridAxisTypeBufferRead[CellIndexToCellID(c_index + int3(0, 1, 0))]);
+    const uint3 c_zp_axis_type = c_index.z == 0 ? (uint3)CT_SOLID : GetMyType(_GridAxisTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, -1))]);
+    const uint3 c_zn_axis_type = c_index.z == _GridSize.z - 1 ? (uint3)CT_SOLID : GetMyType(_GridAxisTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, 1))]);
+
+    uint3 c_axis_types = 0;
+    SetMyType(c_axis_types, c_my_axis_type);
+    SetXPrevType(c_axis_types, c_xp_axis_type);
+    SetXNextType(c_axis_types, c_xn_axis_type);
+    SetYPrevType(c_axis_types, c_yp_axis_type);
+    SetYNextType(c_axis_types, c_yn_axis_type);
+    SetZPrevType(c_axis_types, c_zp_axis_type);
+    SetZNextType(c_axis_types, c_zn_axis_type);
+
+    _GridAxisTypeBufferWrite[c_id] = c_axis_types;
+}

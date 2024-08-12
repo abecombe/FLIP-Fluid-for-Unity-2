@@ -1,8 +1,8 @@
-Shader "ParticleRendering/PBR"
+Shader "ParticleRendering/QuadRenderer"
 {
     CGINCLUDE
 
-    #include "../../Common.hlsl"
+    #include "../../../Common.hlsl"
 
     sampler2D _MainTex;
     float4 _MainTex_TexelSize;
@@ -20,7 +20,7 @@ Shader "ParticleRendering/PBR"
 
     inline float3 GetEyeSpacePos(float2 screen_space_uv)
     {
-        const float depth = tex2D(_MainTex, screen_space_uv).r * _FarClipPlane;
+        const float depth = tex2D(_MainTex, screen_space_uv).a * _FarClipPlane;
         return float3(depth * (screen_space_uv * 2.0 - 1.0) * _ClipToViewConst, -depth);
     }
 
@@ -98,18 +98,18 @@ Shader "ParticleRendering/PBR"
         half4 rgbm = UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, refl_dir, mip);
         half3 indirect_specular = DecodeHDR(rgbm, unity_SpecCube0_HDR);
 
-        half3 c = _Albedo;
+        half3 c = BRDF(tex2D(_MainTex, screen_space_uv).rgb, metallic, perceptual_roughness, world_space_norm, world_space_view_vec, indirect_diffuse, indirect_specular);
 
-        // Final Specular Contribution
-        float vdotn = dot(world_space_view_vec, world_space_norm);
-        float fresnel = 0.15;
-        fresnel = 1 + (1.0 - fresnel) * pow(1.0 - vdotn, 5.0) / fresnel;
+        // // Final Specular Contribution
+        // float vdotn = dot(world_space_view_vec, world_space_norm);
+        // float fresnel = 0.15;
+        // fresnel = 1 + (1.0 - fresnel) * pow(1.0 - vdotn, 5.0) / fresnel;
+        //
+        // c *= fresnel;
 
-        c *= fresnel;
+        //c = lerp(c, _AmbientOcclusionColor, tex2D(_MainTex, i.texcoord).g);
 
-        c = lerp(c, _AmbientOcclusionColor, tex2D(_MainTex, i.texcoord).g);
-
-        return eye_space_pos.z != -_FarClipPlane ? float4(c, 1) : 0;
+        return -eye_space_pos.z < _FarClipPlane- 1 ? float4(tex2D(_MainTex, screen_space_uv).rgb, 1) : 0;
     }
 
     ENDCG

@@ -1,0 +1,9 @@
+﻿#pragma kernel RadixSortLocal
+#pragma kernel GlobalShuffle
+
+#include "../../Simulation/CellType.hlsl"
+
+#define DATA_TYPE uint
+#define GET_KEY(s) (!IsSolidCell(GetMyType(s)))
+
+#include "Assets/Packages/GPUBufferOperators/GPUFiltering.hlsl"

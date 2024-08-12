@@ -2,7 +2,7 @@ Shader "ParticleRendering/AmbientOcclusion"
 {
     CGINCLUDE
 
-    #include "../../Common.hlsl"
+    #include "../../../Common.hlsl"
 
     sampler2D _MainTex;
     float4 _MainTex_TexelSize;
@@ -19,8 +19,8 @@ Shader "ParticleRendering/AmbientOcclusion"
 
     inline float3 GetEyeSpacePos(float2 screen_space_uv)
     {
-        const float depth = tex2D(_MainTex, screen_space_uv).r * _FarClipPlane;
-        return float3(depth * (screen_space_uv * 2.0 - 1.0) * _ClipToViewConst, -depth);
+        const float depth = -tex2D(_MainTex, screen_space_uv).a * _FarClipPlane;
+        return float3(-depth * (screen_space_uv * 2.0 - 1.0) * _ClipToViewConst, depth);
     }
 
     inline void CalcEyeSpacePosNorm(in float2 screen_space_uv, out float3 eye_space_pos, out float3 eye_space_norm)
@@ -40,7 +40,8 @@ Shader "ParticleRendering/AmbientOcclusion"
     inline bool CompareEyeSpaceZvsRealDepth(float3 eye_space_pos) // if true, the point is occluded
     {
         const float2 screen_space_uv = (eye_space_pos.xy / (-eye_space_pos.z) / _ClipToViewConst + 1.0) * 0.5;
-        return -eye_space_pos.z > tex2D(_MainTex, screen_space_uv).r * _FarClipPlane;
+        const float dist = -eye_space_pos.z - tex2D(_MainTex, screen_space_uv).a * _FarClipPlane;
+        return dist > 0 && dist < 1.0f;
     }
 
     float3x3 GetTBNMatrix(float3 eye_space_normal)
@@ -51,7 +52,7 @@ Shader "ParticleRendering/AmbientOcclusion"
         return float3x3(tangent, bitangent, normal);
     }
 
-    float Frag(v2f_default i) : SV_Target
+    float4 Frag(v2f_default i) : SV_Target
     {
         float3 eye_space_pos;
         float3 eye_space_norm;
@@ -65,7 +66,9 @@ Shader "ParticleRendering/AmbientOcclusion"
             if (CompareEyeSpaceZvsRealDepth(eye_space_pos + offset)) counter++;
         }
 
-        return saturate(counter / _AmbientOcclusionMaxRate);
+        if (tex2D(_MainTex, i.texcoord).a == 0) return float4(0, 0, 0, 0);
+
+        return float4(lerp(tex2D(_MainTex, i.texcoord).rgb, (float3)0, 0), 1);
     }
 
     ENDCG

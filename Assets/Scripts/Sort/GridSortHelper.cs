@@ -38,7 +38,7 @@ public class GridSortHelper<Object> : IDisposable
         k.Dispatch(numObjects);
 
         // sort
-        _radixSort.Sort(_objectCellIDPairBuffer, (uint)numGrids - 1);
+        _radixSort.Sort(_objectCellIDPairBuffer, GPURadixSort.KeyType.UInt, (uint)numGrids - 1);
 
         // clear grid objectID
         k = cs.FindKernel("ClearGridObjectID");

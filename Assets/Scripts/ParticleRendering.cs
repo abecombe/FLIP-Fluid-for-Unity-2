@@ -3,11 +3,10 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public class ParticleRendering : MonoBehaviour
+public class ParticleRendering : SingletonMonoBehaviour<ParticleRendering>
 {
-    [SerializeField] private float _particleRadius = 0.1f;
-
     [SerializeField] private int _resolutionWidth = 1000;
+    [SerializeField] private bool _useRealResolution = false;
     [SerializeField] private int _ambientOcclusionSampleCount = 64;
     [SerializeField] private float _ambientOcclusionSampleLength = 1f;
     [SerializeField] private Color _ambientOcclusionColor = Color.black;
@@ -19,6 +18,9 @@ public class ParticleRendering : MonoBehaviour
     [SerializeField] private Color _albedo = Color.blue;
 
     [SerializeField] private Mesh _quadMesh;
+
+    private int ResolutionWidth => _useRealResolution ? Screen.width :_resolutionWidth;
+    private int ResolutionHeight => _useRealResolution ? Screen.height : _resolutionWidth * Screen.height / Screen.width;
 
     private Camera _camera;
     private Camera _mainCamera;
@@ -37,8 +39,8 @@ public class ParticleRendering : MonoBehaviour
 
     private CommandBuffer _commandBuffer;
 
-    private Renderer _pbrRenderer;
-    private Material _pbrMaterial;
+    private Renderer _quadRenderer;
+    private Material _quadMaterial;
 
     private void OnEnable()
     {
@@ -47,9 +49,7 @@ public class ParticleRendering : MonoBehaviour
 
         _mainCamera = Camera.main;
 
-        _camera.fieldOfView = _mainCamera.fieldOfView;
-
-        _cameraTargetTexture.Init(Screen.width, Screen.height, RenderTextureFormat.RGFloat);
+        _cameraTargetTexture.Init(ResolutionWidth, ResolutionHeight, RenderTextureFormat.ARGBFloat);
         _camera.targetTexture = _cameraTargetTexture;
 
         _layerMask = gameObject.layer;
@@ -63,17 +63,18 @@ public class ParticleRendering : MonoBehaviour
         _preparePbrMaterial = new Material(Shader.Find("ParticleRendering/PreparePBR"));
         SetAmbientOcclusionSamplingPointsBuffer();
 
-        _pbrRenderer = GetComponentInChildren<Renderer>();
-        _pbrRenderer.enabled = true;
-        _pbrRenderer.material = new Material(Shader.Find("ParticleRendering/PBR"));
-        _pbrMaterial = _pbrRenderer.material;
+        _quadRenderer = transform.parent.GetComponentInChildren<Renderer>();
+        _quadRenderer.enabled = true;
+        _quadRenderer.material = new Material(Shader.Find("ParticleRendering/QuadRenderer"));
+        _quadMaterial = _quadRenderer.sharedMaterial;
+        _quadMaterial.SetTexture("_MainTex", _cameraTargetTexture);
     }
 
-    public void Render(GPUBuffer<float4> particleRenderingBuffer)
+    public void Render(GPUBuffer<float4> particleRenderingBuffer, float particleRadius)
     {
         SetupCamera();
 
-        RenderParticles(particleRenderingBuffer);
+        RenderParticles(particleRenderingBuffer, particleRadius);
 
         ApplyPostEffect();
 
@@ -84,25 +85,31 @@ public class ParticleRendering : MonoBehaviour
     {
         _camera.transform.position = _mainCamera.transform.position;
         _camera.transform.rotation = _mainCamera.transform.rotation;
+        _camera.fieldOfView = _mainCamera.fieldOfView;
+        _camera.nearClipPlane = _mainCamera.nearClipPlane;
+        _camera.farClipPlane = _mainCamera.farClipPlane;
 
-        if (_cameraTargetTexture.Width != Screen.width || _cameraTargetTexture.Height != Screen.height)
-        {
-            _cameraTargetTexture.Init(Screen.width, Screen.height, RenderTextureFormat.RGFloat);
-            _camera.targetTexture = _cameraTargetTexture;
-            _pbrRenderer.material.SetTexture("_MainTex", _cameraTargetTexture);
-        }
+        if (_cameraTargetTexture.Width == ResolutionWidth && _cameraTargetTexture.Height == ResolutionHeight) return;
+
+        _cameraTargetTexture.Init(ResolutionWidth, ResolutionHeight, RenderTextureFormat.ARGBFloat);
+        _camera.targetTexture = _cameraTargetTexture;
+        _quadMaterial.SetTexture("_MainTex", _cameraTargetTexture);
     }
 
-    private void RenderParticles(GPUBuffer<float4> particleRenderingBuffer)
+    private void RenderParticles(GPUBuffer<float4> particleRenderingBuffer, float particleRadius)
     {
-        _particleRenderingBufferWithArgs.CheckArgsChanged(_quadMesh.GetIndexCount(0), (uint)particleRenderingBuffer.Size);
+        _particleRenderingBufferWithArgs.CheckArgsChanged((uint)particleRenderingBuffer.Size, 1);
 
         _mpb.SetBuffer("_ParticleRenderingBuffer", particleRenderingBuffer);
-        _mpb.SetFloat("_Radius", _particleRadius);
+        _mpb.SetFloat("_Radius", particleRadius);
         _mpb.SetFloat("_NearClipPlane", _camera.nearClipPlane);
         _mpb.SetFloat("_FarClipPlane", _camera.farClipPlane);
+        _mpb.SetVector("_SlowColor", new Color(0f, 0.3891521f, 0.7735849f, 1f));
+        _mpb.SetVector("_FastColor", new Color(0.5999911f, 0.7552593f, 0.9150943f, 1f));
+        _mpb.SetVector("_VelocityRange", new Vector2(2f, 8f));
+        _mpb.SetFloat("_FresnelPower", 0.4f);
 
-        CustomGraphics.DrawMeshInstancedIndirect(_quadMesh, _particleInstanceMaterial, _mpb, _particleRenderingBufferWithArgs, _layerMask);
+        CustomGraphics.DrawProceduralIndirect(_particleInstanceMaterial, _mpb, _particleRenderingBufferWithArgs, _layerMask);
     }
 
     private void SetAmbientOcclusionSamplingPointsBuffer()
@@ -129,12 +136,12 @@ public class ParticleRendering : MonoBehaviour
         int tempRT;
 
         int sourceRT = Shader.PropertyToID("_SourceTex");
-        _commandBuffer.GetTemporaryRT(sourceRT, -1, -1, 0, FilterMode.Bilinear, RenderTextureFormat.RFloat);
+        _commandBuffer.GetTemporaryRT(sourceRT, -1, -1, 0, FilterMode.Bilinear, RenderTextureFormat.ARGBFloat);
         _commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, sourceRT);
 
         // Ambient Occlusion
         int aoRT = Shader.PropertyToID("_AOTex");
-        _commandBuffer.GetTemporaryRT(aoRT, -1, -1, 0, FilterMode.Bilinear, RenderTextureFormat.RFloat);
+        _commandBuffer.GetTemporaryRT(aoRT, -1, -1, 0, FilterMode.Bilinear, RenderTextureFormat.ARGBFloat);
         _ambientOcclusionMaterial.SetFloat("_NearClipPlane", _camera.nearClipPlane);
         _ambientOcclusionMaterial.SetFloat("_FarClipPlane", _camera.farClipPlane);
         float tanFov = Mathf.Tan(_camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
@@ -147,7 +154,7 @@ public class ParticleRendering : MonoBehaviour
         _commandBuffer.Blit(sourceRT, aoRT, _ambientOcclusionMaterial, 0);
 
         // prepare for PBR
-        _commandBuffer.Blit(sourceRT, BuiltinRenderTextureType.CameraTarget, _preparePbrMaterial, 0);
+        _commandBuffer.Blit(sourceRT, BuiltinRenderTextureType.CameraTarget);
 
         _commandBuffer.ReleaseTemporaryRT(aoRT);
         _commandBuffer.ReleaseTemporaryRT(sourceRT);
@@ -155,15 +162,15 @@ public class ParticleRendering : MonoBehaviour
 
     private void PbrRender()
     {
-        _pbrMaterial.SetTexture("_MainTex", _cameraTargetTexture);
-        _pbrMaterial.SetFloat("_NearClipPlane", _camera.nearClipPlane);
-        _pbrMaterial.SetFloat("_FarClipPlane", _camera.farClipPlane);
-        _pbrMaterial.SetFloat("_Roughness", _roughness);
-        _pbrMaterial.SetFloat("_Metallic", _metallic);
-        _pbrMaterial.SetVector("_Albedo", _albedo);
-        _pbrMaterial.SetVector("_AmbientOcclusionColor", _ambientOcclusionColor);
+        _quadMaterial.SetTexture("_MainTex", _cameraTargetTexture);
+        _quadMaterial.SetFloat("_NearClipPlane", _camera.nearClipPlane);
+        _quadMaterial.SetFloat("_FarClipPlane", _camera.farClipPlane);
+        _quadMaterial.SetFloat("_Roughness", _roughness);
+        _quadMaterial.SetFloat("_Metallic", _metallic);
+        _quadMaterial.SetVector("_Albedo", _albedo);
+        _quadMaterial.SetVector("_AmbientOcclusionColor", _ambientOcclusionColor);
         float tanFov = Mathf.Tan(_camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
-        _pbrMaterial.SetVector("_ClipToViewConst", new Vector2(tanFov, tanFov / _camera.aspect));
+        _quadMaterial.SetVector("_ClipToViewConst", new Vector2(tanFov, tanFov / _camera.aspect));
     }
 
     public void OnDisable()

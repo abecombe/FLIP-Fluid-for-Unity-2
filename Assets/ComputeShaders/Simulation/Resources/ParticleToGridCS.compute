@@ -1,6 +1,8 @@
-﻿#pragma kernel ParticleToGrid
+﻿#pragma kernel InitGridVelocity
+#pragma kernel ParticleToGrid
 
 #pragma multi_compile _ USE_LINEAR_KERNEL USE_QUADRATIC_KERNEL
+#pragma multi_compile _ USE_NON_SOLID_CELL_FILTERING
 
 #include "../Common.hlsl"
 
@@ -8,10 +10,12 @@ StructuredBuffer<Particle> _ParticleBufferRead;
 
 StructuredBuffer<uint2> _GridParticleIDBufferRead;
 
-RWStructuredBuffer<uint> _GridTypeBufferWrite;
+StructuredBuffer<uint> _GridTypeBufferRead;
 
 RWStructuredBuffer<float3> _GridVelocityBufferWrite;
 RWStructuredBuffer<float3> _GridOriginalVelocityBufferWrite;
+
+StructuredBuffer<uint> _GridNonSolidCellIDBufferRead;
 
 #if !defined(USE_LINEAR_KERNEL) && !defined(USE_QUADRATIC_KERNEL)
 #define USE_LINEAR_KERNEL
@@ -24,16 +28,28 @@ static const int grid_range[6] = { -2, 1, -2, 1, -2, 1 };
 #endif
 
 [numthreads(128, 1, 1)]
-void ParticleToGrid(uint3 thread_id : SV_DispatchThreadID)
+void InitGridVelocity(uint3 thread_id : SV_DispatchThreadID)
 {
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = thread_id.x;
     const int3 c_index = CellIDToCellIndex(c_id);
 
-    // decide grid type
-    const uint2 particle_index = _GridParticleIDBufferRead[c_id];
-    _GridTypeBufferWrite[c_id] = particle_index.y - particle_index.x > 0 ? GT_FLUID : GT_AIR;
+    _GridVelocityBufferWrite[c_id] = 0;
+    _GridOriginalVelocityBufferWrite[c_id] = 0;
+}
+
+[numthreads(128, 1, 1)]
+void ParticleToGrid(uint3 thread_id : SV_DispatchThreadID)
+{
+    RETURN_IF_INVALID(thread_id);
+
+    const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
+    const int3 c_index = CellIDToCellIndex(c_id);
+
+    const uint c_types = _GridTypeBufferRead[c_id];
+
+    if (IsSolidCell(GetMyType(c_types))) return;
 
     const float3 position = CellIndexToWorldPos(c_index);
     const float3 position_vx = position + float3(-0.5f * _GridSpacing, 0.0f, 0.0f);
@@ -60,7 +76,7 @@ void ParticleToGrid(uint3 thread_id : SV_DispatchThreadID)
 
     float3 velocity = sum_weight > 0 ? sum_velocity / max(sum_weight, FLT_MIN) : 0.0f;
 
-    EnforceBoundaryCondition(velocity, c_index);
+    EnforceBoundaryCondition(velocity, c_types);
 
     _GridVelocityBufferWrite[c_id] = velocity;
     _GridOriginalVelocityBufferWrite[c_id] = velocity;

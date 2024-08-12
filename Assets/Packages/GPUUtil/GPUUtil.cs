@@ -148,14 +148,15 @@ namespace Abecombe.GPUUtil
 
         private bool _inited = false;
 
-        public void Init(int width, int height, RenderTextureFormat format = RenderTextureFormat.ARGBFloat, FilterMode filterMode = FilterMode.Bilinear, TextureWrapMode wrapMode = TextureWrapMode.Clamp)
+        public void Init(int width, int height, RenderTextureFormat format = RenderTextureFormat.ARGBFloat, FilterMode filterMode = FilterMode.Bilinear, TextureWrapMode wrapMode = TextureWrapMode.Clamp, bool depthWrite = true)
         {
             Dispose();
             Data = new RenderTexture(width, height, 0, format)
             {
                 filterMode = filterMode,
                 wrapMode = wrapMode,
-                enableRandomWrite = true
+                enableRandomWrite = true,
+                depth = depthWrite ? 32 : 0
             };
             Data.Create();
             _inited = true;

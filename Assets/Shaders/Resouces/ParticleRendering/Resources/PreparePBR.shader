@@ -2,7 +2,7 @@ Shader "ParticleRendering/PreparePBR"
 {
     CGINCLUDE
 
-    #include "../../Common.hlsl"
+    #include "../../../Common.hlsl"
 
     sampler2D _MainTex;
     float4 _MainTex_TexelSize;
@@ -10,9 +10,9 @@ Shader "ParticleRendering/PreparePBR"
     sampler2D _AOTex;
     float4 _AOTex_TexelSize;
 
-    float2 Frag(v2f_default i) : SV_Target
+    float4 Frag(v2f_default i) : SV_Target
     {
-        return float2(tex2D(_MainTex, i.texcoord).r, tex2D(_AOTex, i.texcoord).r);
+        return float4(tex2D(_MainTex, i.texcoord).rgb, tex2D(_AOTex, i.texcoord).r);
     }
 
     ENDCG

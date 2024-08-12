@@ -22,7 +22,7 @@ void MakeObjectCellIDPair(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint o_id = thread_id.x;
-    const uint c_id = WorldPosToCellID(_ObjectBufferRead[o_id].Pos);
+    const uint c_id = WorldPosToCellID(_ObjectBufferRead[o_id].Pos, _GridMin, _GridSize, _GridInvSpacing);
 
     _ObjectCellIDPairBufferWrite[o_id] = uint2(c_id, o_id);
 }

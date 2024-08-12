@@ -25,7 +25,7 @@ void Diffuse(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_types = _GridTypeBufferRead[c_id];
 
@@ -35,12 +35,12 @@ void Diffuse(uint3 thread_id : SV_DispatchThreadID)
 
     // diffuse using Jacobi iterations
     const float3 diff = _GridDiffusionBufferRead[c_id];
-    const float3 diff_xp = IsFluidCell(GetXPrevType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(-1, 0, 0))] : diff;
-    const float3 diff_xn = IsFluidCell(GetXNextType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(1, 0, 0))] : diff;
-    const float3 diff_yp = IsFluidCell(GetYPrevType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, -1, 0))] : diff;
-    const float3 diff_yn = IsFluidCell(GetYNextType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, 1, 0))] : diff;
-    const float3 diff_zp = IsFluidCell(GetZPrevType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, 0, -1))] : diff;
-    const float3 diff_zn = IsFluidCell(GetZNextType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, 0, 1))] : diff;
+    const float3 diff_xp = IsFluidCell(GetXPrevType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(-1, 0, 0), _GridSize)] : diff;
+    const float3 diff_xn = IsFluidCell(GetXNextType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(1, 0, 0), _GridSize)] : diff;
+    const float3 diff_yp = IsFluidCell(GetYPrevType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, -1, 0), _GridSize)] : diff;
+    const float3 diff_yn = IsFluidCell(GetYNextType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, 1, 0), _GridSize)] : diff;
+    const float3 diff_zp = IsFluidCell(GetZPrevType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, 0, -1), _GridSize)] : diff;
+    const float3 diff_zn = IsFluidCell(GetZNextType(c_axis_types)) ? _GridDiffusionBufferRead[CellIndexToCellID(c_index + int3(0, 0, 1), _GridSize)] : diff;
 
     float3 velocity = 0;
 
@@ -63,7 +63,7 @@ void UpdateVelocity(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_types = _GridTypeBufferRead[c_id];
 

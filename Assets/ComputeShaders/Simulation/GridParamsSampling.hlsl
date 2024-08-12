@@ -14,7 +14,7 @@
 #define S1(S) (S)
 
 #define GET_VALUE_OF_EACH_CELL(SUM, C_INDEX, WEIGHT, GRID_BUFFER, AXIS) {\
-const uint c_id = CellIndexToCellID(C_INDEX);\
+const uint c_id = CellIndexToCellID(C_INDEX, _GridSize);\
 SUM += (C_INDEX).AXIS < _GridSize.AXIS ? GRID_BUFFER[c_id].AXIS * WEIGHT : 0.0f;\
 }\
 
@@ -54,7 +54,7 @@ INTERPOLATE(VALUE, c_index, s, GRID_BUFFER, AXIS)\
 #define S2(S) (0.5f * (0.5f + S) * (0.5f + S))
 
 #define GET_VALUE_OF_EACH_CELL(SUM, C_INDEX, WEIGHT, GRID_BUFFER, AXIS) {\
-const uint c_id = CellIndexToCellID(C_INDEX);\
+const uint c_id = CellIndexToCellID(C_INDEX, _GridSize);\
 SUM += (C_INDEX).AXIS < _GridSize.AXIS ? GRID_BUFFER[c_id].AXIS * WEIGHT : 0.0f;\
 }\
 
@@ -93,17 +93,17 @@ INTERPOLATE(VALUE, c_index, s, GRID_BUFFER, AXIS)\
 #endif
 
 #define SAMPLE_GRID_PARAM_X(VALUE, POS, GRID_BUFFER) {\
-const float3 g_pos = WorldPosToGridPos(POS) + float3(0.5f, 0.0f, 0.0f);\
+const float3 g_pos = WorldPosToGridPos(POS, _GridMin, _GridInvSpacing) + float3(0.5f, 0.0f, 0.0f);\
 SAMPLE_GRID_PARAM(VALUE, g_pos, GRID_BUFFER, x)\
 }\
 
 #define SAMPLE_GRID_PARAM_Y(VALUE, POS, GRID_BUFFER) {\
-const float3 g_pos = WorldPosToGridPos(POS) + float3(0.0, 0.5f, 0.0f);\
+const float3 g_pos = WorldPosToGridPos(POS, _GridMin, _GridInvSpacing) + float3(0.0, 0.5f, 0.0f);\
 SAMPLE_GRID_PARAM(VALUE, g_pos, GRID_BUFFER, y)\
 }\
 
 #define SAMPLE_GRID_PARAM_Z(VALUE, POS, GRID_BUFFER) {\
-const float3 g_pos = WorldPosToGridPos(POS) + float3(0.0f, 0.0f, 0.5f);\
+const float3 g_pos = WorldPosToGridPos(POS, _GridMin, _GridInvSpacing) + float3(0.0f, 0.0f, 0.5f);\
 SAMPLE_GRID_PARAM(VALUE, g_pos, GRID_BUFFER, z)\
 }\
 

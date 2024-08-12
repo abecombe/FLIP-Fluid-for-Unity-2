@@ -1,61 +1,59 @@
 ﻿#ifndef CS_GRID_HELPER_HLSL
 #define CS_GRID_HELPER_HLSL
 
-#include "GridData.hlsl"
-
-inline uint CellIndexToCellID(int3 index)
+inline uint CellIndexToCellID(int3 index, int3 grid_size)
 {
-    uint3 clamped_index = clamp(index, (int3)0, _GridSize - 1);
-    return clamped_index.x + clamped_index.y * _GridSize.x + clamped_index.z * _GridSize.x * _GridSize.y;
+    uint3 clamped_index = clamp(index, (int3)0, grid_size - 1);
+    return clamped_index.x + clamped_index.y * grid_size.x + clamped_index.z * grid_size.x * grid_size.y;
 }
 
-inline int3 CellIDToCellIndex(uint id)
+inline int3 CellIDToCellIndex(uint id, int3 grid_size)
 {
-    int x = id % _GridSize.x;
-    int y = id / _GridSize.x % _GridSize.y;
-    int z = id / (_GridSize.x * _GridSize.y);
+    int x = id % grid_size.x;
+    int y = id / grid_size.x % grid_size.y;
+    int z = id / (grid_size.x * grid_size.y);
     return int3(x, y, z);
 }
 
-inline float3 WorldPosToGridPos(float3 position)
+inline float3 WorldPosToGridPos(float3 position, float3 grid_min, float grid_inv_spacing)
 {
-    return (position - _GridMin) * _GridInvSpacing;
+    return (position - grid_min) * grid_inv_spacing;
 }
 
-inline int3 WorldPosToCellIndex(float3 position)
+inline int3 WorldPosToCellIndex(float3 position, float3 grid_min, float grid_inv_spacing)
 {
-    return floor(WorldPosToGridPos(position));
+    return floor(WorldPosToGridPos(position, grid_min, grid_inv_spacing));
 }
 
-inline uint WorldPosToCellID(float3 position)
+inline uint WorldPosToCellID(float3 position, float3 grid_min, int3 grid_size, float grid_inv_spacing)
 {
-    return CellIndexToCellID(WorldPosToCellIndex(position));
+    return CellIndexToCellID(WorldPosToCellIndex(position, grid_min, grid_inv_spacing), grid_size);
 }
 
-inline float3 CellIndexToWorldPos(int3 index)
+inline float3 CellIndexToWorldPos(int3 index, float3 grid_min, float grid_spacing)
 {
-    return _GridMin + (index + 0.5f) * _GridSpacing;
+    return grid_min + (index + 0.5f) * grid_spacing;
 }
 
-inline float3 GridPosToWorldPos(float3 position)
+inline float3 GridPosToWorldPos(float3 position, float3 grid_min, float grid_spacing)
 {
-    return _GridMin + position * _GridSpacing;
+    return grid_min + position * grid_spacing;
 }
 
-#define FOR_EACH_NEIGHBOR_CELL_START(C_INDEX, NC_INDEX, NC_ID, RANGE) {\
+#define FOR_EACH_NEIGHBOR_CELL_START(C_INDEX, NC_INDEX, NC_ID, RANGE, GRID_SIZE) {\
 for (int i = (int)C_INDEX.x + RANGE[0]; i <= (int)C_INDEX.x + RANGE[1]; ++i)\
 for (int j = (int)C_INDEX.y + RANGE[2]; j <= (int)C_INDEX.y + RANGE[3]; ++j)\
 for (int k = (int)C_INDEX.z + RANGE[4]; k <= (int)C_INDEX.z + RANGE[5]; ++k) {\
     const int3 NC_INDEX = int3(i, j, k);\
-    const uint NC_ID = CellIndexToCellID(NC_INDEX);\
+    const uint NC_ID = CellIndexToCellID(NC_INDEX, GRID_SIZE);\
 
 #define FOR_EACH_NEIGHBOR_CELL_END }}
 
-#define FOR_EACH_NEIGHBOR_CELL_PARTICLE_START(C_INDEX, P_ID, P_ID_BUFFER, RANGE) {\
-for (int i = max((int)C_INDEX.x + RANGE[0], 0); i <= min((int)C_INDEX.x + RANGE[1], _GridSize.x - 1); ++i)\
-for (int j = max((int)C_INDEX.y + RANGE[2], 0); j <= min((int)C_INDEX.y + RANGE[3], _GridSize.y - 1); ++j)\
-for (int k = max((int)C_INDEX.z + RANGE[4], 0); k <= min((int)C_INDEX.z + RANGE[5], _GridSize.z - 1); ++k) {\
-    const uint2 index = P_ID_BUFFER[CellIndexToCellID(int3(i, j, k))];\
+#define FOR_EACH_NEIGHBOR_CELL_PARTICLE_START(C_INDEX, P_ID, P_ID_BUFFER, RANGE, GRID_SIZE) {\
+for (int i = max((int)C_INDEX.x + RANGE[0], 0); i <= min((int)C_INDEX.x + RANGE[1], GRID_SIZE.x - 1); ++i)\
+for (int j = max((int)C_INDEX.y + RANGE[2], 0); j <= min((int)C_INDEX.y + RANGE[3], GRID_SIZE.y - 1); ++j)\
+for (int k = max((int)C_INDEX.z + RANGE[4], 0); k <= min((int)C_INDEX.z + RANGE[5], GRID_SIZE.z - 1); ++k) {\
+    const uint2 index = P_ID_BUFFER[CellIndexToCellID(int3(i, j, k), GRID_SIZE)];\
     for (uint P_ID = index.x; P_ID < index.y; ++P_ID) {\
 
 #define FOR_EACH_NEIGHBOR_CELL_PARTICLE_END }}}

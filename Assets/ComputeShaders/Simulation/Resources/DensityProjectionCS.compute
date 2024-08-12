@@ -55,7 +55,7 @@ void InitBuffer(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = thread_id.x;
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_my_type = GetMyType(_GridTypeBufferRW[c_id]);
 
@@ -76,17 +76,17 @@ void InterlockedAddWeight(uint3 thread_id : SV_DispatchThreadID)
 
     const float3 p_pos = _ParticleBufferRead[p_id].position;
 
-    const int3 c_index = WorldPosToCellIndex(p_pos);
-    const uint c_id = CellIndexToCellID(c_index);
+    const int3 c_index = WorldPosToCellIndex(p_pos, _GridMin, _GridInvSpacing);
+    const uint c_id = CellIndexToCellID(c_index, _GridSize);
 
     InterlockedMin(_GridTypeBufferRW[c_id], CT_FLUID);
 
-    FOR_EACH_NEIGHBOR_CELL_START(c_index, nc_index, nc_id, grid_range)
+    FOR_EACH_NEIGHBOR_CELL_START(c_index, nc_index, nc_id, grid_range, _GridSize)
     {
         if (any(nc_index < 0) || any(nc_index > _GridSize - 1))
             continue;
 
-        const float weight = GetWeight(p_pos, CellIndexToWorldPos(nc_index), _GridInvSpacing);
+        const float weight = GetWeight(p_pos, CellIndexToWorldPos(nc_index, _GridMin, _GridSpacing), _GridInvSpacing);
         InterlockedAdd(_GridUIntWeightBufferWrite[nc_id], ConvertFloat2UInt(weight));
     }
     FOR_EACH_NEIGHBOR_CELL_END
@@ -98,15 +98,15 @@ void SetNeighborCellTypes(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = thread_id.x;
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_my_type = GetMyType(_GridTypeBufferRead[c_id]);
-    const uint c_xp_type = c_index.x == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(-1, 0, 0))]);
-    const uint c_xn_type = c_index.x == _GridSize.x - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(1, 0, 0))]);
-    const uint c_yp_type = c_index.y == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, -1, 0))]);
-    const uint c_yn_type = c_index.y == _GridSize.y - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 1, 0))]);
-    const uint c_zp_type = c_index.z == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, -1))]);
-    const uint c_zn_type = c_index.z == _GridSize.z - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, 1))]);
+    const uint c_xp_type = c_index.x == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(-1, 0, 0), _GridSize)]);
+    const uint c_xn_type = c_index.x == _GridSize.x - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(1, 0, 0), _GridSize)]);
+    const uint c_yp_type = c_index.y == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, -1, 0), _GridSize)]);
+    const uint c_yn_type = c_index.y == _GridSize.y - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 1, 0), _GridSize)]);
+    const uint c_zp_type = c_index.z == 0 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, -1), _GridSize)]);
+    const uint c_zn_type = c_index.z == _GridSize.z - 1 ? CT_SOLID : GetMyType(_GridTypeBufferRead[CellIndexToCellID(c_index + int3(0, 0, 1), _GridSize)]);
 
     uint c_types = 0;
     SetMyType(c_types, c_my_type);
@@ -126,7 +126,7 @@ void CalcGridWeight(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_types = _GridTypeBufferRead[c_id];
 
@@ -138,7 +138,7 @@ void CalcGridWeight(uint3 thread_id : SV_DispatchThreadID)
     {
         bool neighbor_air = false;
 
-        FOR_EACH_NEIGHBOR_CELL_START(c_index, nc_index, nc_id, grid_range)
+        FOR_EACH_NEIGHBOR_CELL_START(c_index, nc_index, nc_id, grid_range, _GridSize)
         {
             const uint nc_my_type = GetMyType(_GridTypeBufferRead[nc_id]);
 
@@ -182,7 +182,7 @@ void Project(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_types = _GridTypeBufferRead[c_id];
 
@@ -193,17 +193,17 @@ void Project(uint3 thread_id : SV_DispatchThreadID)
     if (IsFluidCell(GetMyType(c_types)))
     {
         // project using Jacobi iterations
-        uint c_id_xp = CellIndexToCellID(c_index + int3(-1, 0, 0));
+        uint c_id_xp = CellIndexToCellID(c_index + int3(-1, 0, 0), _GridSize);
         c_id_xp = IsSolidCell(GetXPrevType(c_types)) ? c_id : c_id_xp;
-        uint c_id_xn = CellIndexToCellID(c_index + int3(1, 0, 0));
+        uint c_id_xn = CellIndexToCellID(c_index + int3(1, 0, 0), _GridSize);
         c_id_xn = IsSolidCell(GetXNextType(c_types)) ? c_id : c_id_xn;
-        uint c_id_yp = CellIndexToCellID(c_index + int3(0, -1, 0));
+        uint c_id_yp = CellIndexToCellID(c_index + int3(0, -1, 0), _GridSize);
         c_id_yp = IsSolidCell(GetYPrevType(c_types)) ? c_id : c_id_yp;
-        uint c_id_yn = CellIndexToCellID(c_index + int3(0, 1, 0));
+        uint c_id_yn = CellIndexToCellID(c_index + int3(0, 1, 0), _GridSize);
         c_id_yn = IsSolidCell(GetYNextType(c_types)) ? c_id : c_id_yn;
-        uint c_id_zp = CellIndexToCellID(c_index + int3(0, 0, -1));
+        uint c_id_zp = CellIndexToCellID(c_index + int3(0, 0, -1), _GridSize);
         c_id_zp = IsSolidCell(GetZPrevType(c_types)) ? c_id : c_id_zp;
-        uint c_id_zn = CellIndexToCellID(c_index + int3(0, 0, 1));
+        uint c_id_zn = CellIndexToCellID(c_index + int3(0, 0, 1), _GridSize);
         c_id_zn = IsSolidCell(GetZNextType(c_types)) ? c_id : c_id_zn;
 
         pressure += _DensityProjectionParameter1.x * (_GridDensityPressureBufferRead[c_id_xp] + _GridDensityPressureBufferRead[c_id_xn]);
@@ -221,17 +221,17 @@ void CalcPositionModify(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_types = _GridTypeBufferRead[c_id];
 
     if (IsSolidCell(GetMyType(c_types))) return;
 
-    uint c_id_xp = CellIndexToCellID(c_index + int3(-1, 0, 0));
+    uint c_id_xp = CellIndexToCellID(c_index + int3(-1, 0, 0), _GridSize);
     c_id_xp = IsSolidCell(GetXPrevType(c_types)) ? c_id : c_id_xp;
-    uint c_id_yp = CellIndexToCellID(c_index + int3(0, -1, 0));
+    uint c_id_yp = CellIndexToCellID(c_index + int3(0, -1, 0), _GridSize);
     c_id_yp = IsSolidCell(GetYPrevType(c_types)) ? c_id : c_id_yp;
-    uint c_id_zp = CellIndexToCellID(c_index + int3(0, 0, -1));
+    uint c_id_zp = CellIndexToCellID(c_index + int3(0, 0, -1), _GridSize);
     c_id_zp = IsSolidCell(GetZPrevType(c_types)) ? c_id : c_id_zp;
 
     const float p = _GridDensityPressureBufferRead[c_id];

@@ -33,7 +33,7 @@ void InitGridVelocity(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = thread_id.x;
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     _GridVelocityBufferWrite[c_id] = 0;
     _GridOriginalVelocityBufferWrite[c_id] = 0;
@@ -45,13 +45,13 @@ void ParticleToGrid(uint3 thread_id : SV_DispatchThreadID)
     RETURN_IF_INVALID(thread_id);
 
     const uint c_id = GetCellID(thread_id, _GridNonSolidCellIDBufferRead);
-    const int3 c_index = CellIDToCellIndex(c_id);
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
 
     const uint c_types = _GridTypeBufferRead[c_id];
 
     if (IsSolidCell(GetMyType(c_types))) return;
 
-    const float3 position = CellIndexToWorldPos(c_index);
+    const float3 position = CellIndexToWorldPos(c_index, _GridMin, _GridSpacing);
     const float3 position_vx = position + float3(-0.5f * _GridSpacing, 0.0f, 0.0f);
     const float3 position_vy = position + float3(0.0f, -0.5f * _GridSpacing, 0.0f);
     const float3 position_vz = position + float3(0.0f, 0.0f, -0.5f * _GridSpacing);
@@ -60,7 +60,7 @@ void ParticleToGrid(uint3 thread_id : SV_DispatchThreadID)
     float3 sum_velocity = 0;
 
     // calc weight & velocity
-    FOR_EACH_NEIGHBOR_CELL_PARTICLE_START(c_index, p_id, _GridParticleIDBufferRead, grid_range)
+    FOR_EACH_NEIGHBOR_CELL_PARTICLE_START(c_index, p_id, _GridParticleIDBufferRead, grid_range, _GridSize)
     {
         const Particle p = _ParticleBufferRead[p_id];
 

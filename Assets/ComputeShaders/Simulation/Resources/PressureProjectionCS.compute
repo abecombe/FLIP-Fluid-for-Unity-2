@@ -15,6 +15,8 @@ StructuredBuffer<uint> _GridTypeBufferRead;
 StructuredBuffer<float3> _GridVelocityBufferRead;
 RWStructuredBuffer<float3> _GridVelocityBufferRW;
 
+StructuredBuffer<float3> _GridFluidRatioBufferRead;
+
 StructuredBuffer<float> _GridDivergenceBufferRead;
 RWStructuredBuffer<float> _GridDivergenceBufferWrite;
 
@@ -36,6 +38,7 @@ void CalcDivergence(uint3 thread_id : SV_DispatchThreadID)
     if (IsSolidCell(GetMyType(c_types))) return;
 
     const float3 velocity = _GridVelocityBufferRead[c_id];
+    const float3 fluid_ratio = _GridFluidRatioBufferRead[c_id];
 
     float divergence = 0;
 
@@ -45,9 +48,9 @@ void CalcDivergence(uint3 thread_id : SV_DispatchThreadID)
         const uint c_id_yn = CellIndexToCellID(c_index + int3(0, 1, 0), _GridSize);
         const uint c_id_zn = CellIndexToCellID(c_index + int3(0, 0, 1), _GridSize);
 
-        divergence += _DivergenceParameter.x * ((c_index.x < _GridSize.x - 1 ? _GridVelocityBufferRead[c_id_xn].x : 0.0f) - velocity.x);
-        divergence += _DivergenceParameter.y * ((c_index.y < _GridSize.y - 1 ? _GridVelocityBufferRead[c_id_yn].y : 0.0f) - velocity.y);
-        divergence += _DivergenceParameter.z * ((c_index.z < _GridSize.z - 1 ? _GridVelocityBufferRead[c_id_zn].z : 0.0f) - velocity.z);
+        divergence += _DivergenceParameter.x * ((c_index.x < _GridSize.x - 1 ? _GridVelocityBufferRead[c_id_xn].x * _GridFluidRatioBufferRead[c_id_xn].x : 0.0f) - velocity.x * fluid_ratio.x);
+        divergence += _DivergenceParameter.y * ((c_index.y < _GridSize.y - 1 ? _GridVelocityBufferRead[c_id_yn].y * _GridFluidRatioBufferRead[c_id_yn].y : 0.0f) - velocity.y * fluid_ratio.y);
+        divergence += _DivergenceParameter.z * ((c_index.z < _GridSize.z - 1 ? _GridVelocityBufferRead[c_id_zn].z * _GridFluidRatioBufferRead[c_id_zn].z : 0.0f) - velocity.z * fluid_ratio.z);
     }
 
     _GridDivergenceBufferWrite[c_id] = divergence;
@@ -83,10 +86,19 @@ void Project(uint3 thread_id : SV_DispatchThreadID)
         uint c_id_zn = CellIndexToCellID(c_index + int3(0, 0, 1), _GridSize);
         c_id_zn = IsSolidCell(GetZNextType(c_types)) ? c_id : c_id_zn;
 
-        pressure += _PressureProjectionParameter1.x * (_GridPressureBufferRead[c_id_xp] + _GridPressureBufferRead[c_id_xn]);
-        pressure += _PressureProjectionParameter1.y * (_GridPressureBufferRead[c_id_yp] + _GridPressureBufferRead[c_id_yn]);
-        pressure += _PressureProjectionParameter1.z * (_GridPressureBufferRead[c_id_zp] + _GridPressureBufferRead[c_id_zn]);
-        pressure += _PressureProjectionParameter1.w * _GridDivergenceBufferRead[c_id];
+        float fluid_ratio_xp = _GridFluidRatioBufferRead[c_id].x;
+        float fluid_ratio_xn = c_index.x < _GridSize.x - 1 ? _GridFluidRatioBufferRead[CellIndexToCellID(c_index + int3(1, 0, 0), _GridSize)].x : 0.0f;
+        float fluid_ratio_yp = _GridFluidRatioBufferRead[c_id].y;
+        float fluid_ratio_yn = c_index.y < _GridSize.y - 1 ? _GridFluidRatioBufferRead[CellIndexToCellID(c_index + int3(0, 1, 0), _GridSize)].y : 0.0f;
+        float fluid_ratio_zp = _GridFluidRatioBufferRead[c_id].z;
+        float fluid_ratio_zn = c_index.z < _GridSize.z - 1 ? _GridFluidRatioBufferRead[CellIndexToCellID(c_index + int3(0, 0, 1), _GridSize)].z : 0.0f;
+
+        float sum_fluid_ratio = fluid_ratio_xp + fluid_ratio_xn + fluid_ratio_yp + fluid_ratio_yn + fluid_ratio_zp + fluid_ratio_zn;
+
+        pressure += _PressureProjectionParameter1.x * 6 / sum_fluid_ratio * (fluid_ratio_xp * _GridPressureBufferRead[c_id_xp] + fluid_ratio_xn * _GridPressureBufferRead[c_id_xn]);
+        pressure += _PressureProjectionParameter1.y * 6 / sum_fluid_ratio * (fluid_ratio_yp * _GridPressureBufferRead[c_id_yp] + fluid_ratio_yn * _GridPressureBufferRead[c_id_yn]);
+        pressure += _PressureProjectionParameter1.z * 6 / sum_fluid_ratio * (fluid_ratio_zp * _GridPressureBufferRead[c_id_zp] + fluid_ratio_zn * _GridPressureBufferRead[c_id_zn]);
+        pressure += _PressureProjectionParameter1.w * 6 / sum_fluid_ratio * _GridDivergenceBufferRead[c_id];
     }
 
     _GridPressureBufferWrite[c_id] = pressure;
@@ -120,6 +132,8 @@ void UpdateVelocity(uint3 thread_id : SV_DispatchThreadID)
     velocity.z -= _PressureProjectionParameter2.z * (pressure - _GridPressureBufferRead[c_id_zp]);
 
     EnforceBoundaryCondition(velocity, c_types);
+
+    velocity = _GridFluidRatioBufferRead[c_id] == 0 ? 0 : velocity;
 
     _GridVelocityBufferRW[c_id] = velocity;
 }

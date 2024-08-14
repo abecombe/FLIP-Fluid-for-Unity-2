@@ -2,6 +2,7 @@
 #pragma kernel SetNeighborCellTypes
 #pragma kernel SetMyCellAxisType
 #pragma kernel SetNeighborCellAxisTypes
+#pragma kernel SetFluidRatio
 
 #pragma multi_compile _ IS_CUBE_AREA_SIMULATION IS_SPHERE_AREA_SIMULATION
 
@@ -16,6 +17,8 @@ StructuredBuffer<uint3> _GridAxisTypeBufferRead;
 RWStructuredBuffer<uint3> _GridAxisTypeBufferWrite;
 
 RWStructuredBuffer<uint> _GridNonSolidCellIDBufferWrite;
+
+RWStructuredBuffer<float3> _GridFluidRatioBufferWrite;
 
 [numthreads(128, 1, 1)]
 void SetMyCellType(uint3 thread_id : SV_DispatchThreadID)
@@ -130,4 +133,39 @@ void SetNeighborCellAxisTypes(uint3 thread_id : SV_DispatchThreadID)
     SetZNextType(c_axis_types, c_zn_axis_type);
 
     _GridAxisTypeBufferWrite[c_id] = c_axis_types;
+}
+
+[numthreads(128, 1, 1)]
+void SetFluidRatio(uint3 thread_id : SV_DispatchThreadID)
+{
+    RETURN_IF_INVALID(thread_id);
+
+    const uint c_id = thread_id.x;
+    const int3 c_index = CellIDToCellIndex(c_id, _GridSize);
+
+    const float3 position = CellIndexToWorldPos(c_index, _GridMin, _GridSpacing);
+
+    const float half_grid_spacing = 0.5f * _GridSpacing;
+
+    const float sdf_position_xp = SDFSphereOutside(position + float3(-half_grid_spacing, 0, 0), 0, 12.0f);
+    const float sdf_position_yp = SDFSphereOutside(position + float3(0, -half_grid_spacing, 0), 0, 12.0f);
+    const float sdf_position_zp = SDFSphereOutside(position + float3(0, 0, -half_grid_spacing), 0, 12.0f);
+
+    const float sdf_position_xp_yp_zp = SDFSphereOutside(position + float3(-half_grid_spacing, -half_grid_spacing, -half_grid_spacing), 0, 12.0f);
+    const float sdf_position_xn_yp_zp = SDFSphereOutside(position + float3(half_grid_spacing, -half_grid_spacing, -half_grid_spacing), 0, 12.0f);
+    const float sdf_position_xp_yn_zp = SDFSphereOutside(position + float3(-half_grid_spacing, half_grid_spacing, -half_grid_spacing), 0, 12.0f);
+    const float sdf_position_xn_yn_zp = SDFSphereOutside(position + float3(half_grid_spacing, half_grid_spacing, -half_grid_spacing), 0, 12.0f);
+    const float sdf_position_xp_yp_zn = SDFSphereOutside(position + float3(-half_grid_spacing, -half_grid_spacing, half_grid_spacing), 0, 12.0f);
+    const float sdf_position_xn_yp_zn = SDFSphereOutside(position + float3(half_grid_spacing, -half_grid_spacing, half_grid_spacing), 0, 12.0f);
+    const float sdf_position_xp_yn_zn = SDFSphereOutside(position + float3(-half_grid_spacing, half_grid_spacing, half_grid_spacing), 0, 12.0f);
+    // const float sdf_position_xn_yn_zn = SDFSphereOutside(position + float3(half_grid_spacing, half_grid_spacing, half_grid_spacing), 0, 12.0f);
+
+    float3 fluid_ratio = 0;
+    fluid_ratio.x = FractionInside(sdf_position_xp, sdf_position_xp_yp_zp, sdf_position_xp_yn_zp, sdf_position_xp_yp_zn, sdf_position_xp_yn_zn);
+    fluid_ratio.y = FractionInside(sdf_position_yp, sdf_position_xp_yp_zp, sdf_position_xp_yp_zn, sdf_position_xn_yp_zp, sdf_position_xn_yp_zn);
+    fluid_ratio.z = FractionInside(sdf_position_zp, sdf_position_xp_yp_zp, sdf_position_xn_yp_zp, sdf_position_xp_yn_zp, sdf_position_xn_yn_zp);
+
+    fluid_ratio = 1 - saturate(fluid_ratio);
+
+    _GridFluidRatioBufferWrite[c_id] = fluid_ratio;
 }

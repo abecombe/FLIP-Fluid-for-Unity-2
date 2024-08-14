@@ -940,7 +940,7 @@ MonoBehaviour:
   _advectionMethod: 0
   _activeDensityProjection: 1
   _diffusionJacobiIteration: 15
-  _pressureProjectionJacobiIteration: 15
+  _pressureProjectionJacobiIteration: 60
   _densityProjectionJacobiIteration: 30
   _toggleUIKey: 9
   _cubeMesh: {fileID: 4300000, guid: f0b0f7d12f8a7864fa8f10bf483aa030, type: 2}

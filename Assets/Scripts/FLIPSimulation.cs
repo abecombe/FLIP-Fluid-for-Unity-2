@@ -49,6 +49,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
     private const int NumParticleInACell = 8;
     private int NumParticles => ParticleInitGridSize.x * ParticleInitGridSize.y * ParticleInitGridSize.z * NumParticleInACell;
     private int NumGrids => GridSize.x * GridSize.y * GridSize.z;
+    private int NumPlusOneGrids => (GridSize.x + 1) * (GridSize.y + 1) * (GridSize.z + 1);
 
     [SerializeField] private SimulationArea _simulationArea = SimulationArea.Cube;
 
@@ -85,6 +86,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
     private GPUBuffer<float3> _gridVelocityBuffer = new();
     private GPUBuffer<float3> _gridOriginalVelocityBuffer = new();
     private GPUBuffer<uint> _gridNonSolidCellIDBuffer = new();
+    private GPUBuffer<float3> _gridFluidRatioBuffer = new();
     // viscous diffusion
     private GPUDoubleBuffer<float3> _gridDiffusionBuffer = new();
     private GPUDoubleBuffer<uint3> _gridAxisTypeBuffer = new();
@@ -127,7 +129,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
     [SerializeField] private AdvectionMethod _advectionMethod = AdvectionMethod.ForwardEuler;
     [SerializeField] private bool _activeDensityProjection = true;
     [SerializeField] [Range(1, 30)] private uint _diffusionJacobiIteration = 15;
-    [SerializeField] [Range(1, 30)] private uint _pressureProjectionJacobiIteration = 15;
+    [SerializeField] [Range(1, 120)] private uint _pressureProjectionJacobiIteration = 15;
     [SerializeField] [Range(1, 60)] private uint _densityProjectionJacobiIteration = 30;
 
     // RosettaUI
@@ -236,6 +238,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         _gridDensityPressureBuffer.Init(NumGrids);
         _gridPositionModifyBuffer.Init(NumGrids);
         _gridFloatZeroBuffer.Init(NumGrids);
+        _gridFluidRatioBuffer.Init(NumGrids);
     }
 
     private void InitGPUBuffers()
@@ -314,6 +317,11 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         k.SetBuffer("_GridTypeBufferWrite", _gridTypeBuffer.Write);
         k.Dispatch(NumGrids);
         _gridTypeBuffer.Swap();
+
+        // set fluid ratio
+        k = cs.FindKernel("SetFluidRatio");
+        k.SetBuffer("_GridFluidRatioBufferWrite", _gridFluidRatioBuffer);
+        k.Dispatch(NumGrids);
     }
 
     // transferring velocity from particle to grid
@@ -448,6 +456,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         k.SetBuffer("_GridVelocityBufferRead", _gridVelocityBuffer);
         k.SetBuffer("_GridDivergenceBufferWrite", _gridDivergenceBuffer);
         k.SetBuffer("_GridNonSolidCellIDBufferRead", _gridNonSolidCellIDBuffer);
+        k.SetBuffer("_GridFluidRatioBufferRead", _gridFluidRatioBuffer);
         k.Dispatch(NonSolidCellsDispatchSize);
 
         // project
@@ -459,6 +468,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         k.SetBuffer("_GridTypeBufferRead", _gridTypeBuffer.Read);
         k.SetBuffer("_GridDivergenceBufferRead", _gridDivergenceBuffer);
         k.SetBuffer("_GridNonSolidCellIDBufferRead", _gridNonSolidCellIDBuffer);
+        k.SetBuffer("_GridFluidRatioBufferRead", _gridFluidRatioBuffer);
         for (uint i = 0; i < _pressureProjectionJacobiIteration; i++)
         {
             k.SetBuffer("_GridPressureBufferRead", _gridPressureBuffer.Read);
@@ -475,6 +485,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         k.SetBuffer("_GridPressureBufferRead", _gridPressureBuffer.Read);
         k.SetBuffer("_GridTypeBufferRead", _gridTypeBuffer.Read);
         k.SetBuffer("_GridNonSolidCellIDBufferRead", _gridNonSolidCellIDBuffer);
+        k.SetBuffer("_GridFluidRatioBufferRead", _gridFluidRatioBuffer);
         k.Dispatch(NonSolidCellsDispatchSize);
     }
 
@@ -633,6 +644,7 @@ public class FLIPSimulation : MonoBehaviour, IDisposable
         _gridDensityPressureBuffer.Dispose();
         _gridPositionModifyBuffer.Dispose();
         _gridFloatZeroBuffer.Dispose();
+        _gridFluidRatioBuffer.Dispose();
 
         _gridSortHelper.Dispose();
         _nonSolidCellFiltering.Dispose();

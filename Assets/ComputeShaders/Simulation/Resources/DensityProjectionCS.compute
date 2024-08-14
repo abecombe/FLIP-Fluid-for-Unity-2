@@ -60,7 +60,7 @@ void InitBuffer(uint3 thread_id : SV_DispatchThreadID)
     const uint c_my_type = GetMyType(_GridTypeBufferRW[c_id]);
 
     uint c_types = 0;
-    SetMyType(c_types, IsSolidCell(c_my_type) ? CT_SOLID : CT_AIR);
+    SetMyType(c_types, length(CellIndexToWorldPos(c_index, _GridMin, _GridSpacing)) > 12.0 ? CT_SOLID : CT_AIR);
 
     _GridTypeBufferRW[c_id] = c_types;
     _GridUIntWeightBufferWrite[c_id] = 0;

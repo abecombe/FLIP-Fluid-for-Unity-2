@@ -15,6 +15,8 @@ float _DeltaTime;
 #include "BoundaryCondition.hlsl"
 #include "KernelFunc.hlsl"
 #include "Obstacle.hlsl"
+#include "SDF.hlsl"
+#include "LevelSetUtils.hlsl"
 
 
 #endif /* CS_SIMULATION_COMMON_HLSL */
